@@ -1,0 +1,8 @@
+tests/
+*test*.*
+*.csv
+*.pyc
+*.json
+__pycache__/
+.DS_store
+unit*
