@@ -1,4 +1,6 @@
 tests/
+logs/
+*.log
 *test*.*
 *.csv
 *.pyc

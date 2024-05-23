@@ -30,9 +30,9 @@ class ShortUrlUpdate(BaseModel):
 class ShortUrl(ShortUrlBase):
     short_code: str
     click_count: int
-    non_repeat_click_count: int
     created_at: datetime
     updated_at: datetime
+    last_click_at: Optional[datetime]
 
     class Config:
         from_attributes = True

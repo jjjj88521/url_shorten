@@ -1,12 +1,17 @@
 import os
-from dotenv import load_dotenv
+from pydantic_settings import BaseSettings
 
-# 根據環境變數設定 .env 檔案名稱
-environment = os.getenv("FASTAPI_ENV", "dev")
-dotenv_file = f".env.{environment}"
 
-# 讀取對應的 .env 檔案
-load_dotenv(dotenv_file)
+class Settings(BaseSettings):
+    DATABASE_USER: str
+    DATABASE_PASSWORD: str
+    DATABASE_HOST: str
+    DATABASE_PORT: int
+    DATABASE_NAME: str
+    SNOWFLAKE_SINCE_TIME: str
 
-# 從 .env 檔案中讀取變數
-DATABASE_URL = os.getenv("DATABASE_URL")
+    class Config:
+        env_file = f".env.{os.getenv('FASTAPI_ENV', 'dev')}"
+
+
+settings = Settings()

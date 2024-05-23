@@ -1,3 +1,4 @@
+import asyncio
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.short_url import ShortUrl
@@ -23,23 +24,42 @@ class ShortUrlService:
         async_session: AsyncSession, page: int = 1, limit: int = 20, **kwargs
     ):
         results = []
-        batch_size = 1000
-        for key, value in kwargs.items():
-            if isinstance(value, list):
-                # 分批次处理每个列表参数
-                for i in range(0, len(value), batch_size):
-                    batch = value[i : i + batch_size]
-                    query = select(ShortUrl).filter(getattr(ShortUrl, key).in_(batch))
+        batch_size = 10000
+        base_query = select(ShortUrl)
+
+        if kwargs:
+            # 如果有提供過濾條件，執行過濾條件查詢
+            for key, value in kwargs.items():
+                # 如果是列表，則執行分批次查詢
+                if isinstance(value, list):
+                    tasks = []
+                    # 分批次處理每個列表參數
+                    for i in range(0, len(value), batch_size):
+                        batch = value[i : i + batch_size]
+                        query = base_query.filter(getattr(ShortUrl, key).in_(batch))
+                        if page != -1:
+                            query = query.offset((page - 1) * limit).limit(limit)
+                        tasks.append(async_session.execute(query))
+
+                    # 異步執行所有批次查詢
+                    batch_results = await asyncio.gather(*tasks)
+                    for batch_result in batch_results:
+                        results.extend(batch_result.scalars().all())
+                # 否則直接使用過濾條件查詢
+                else:
+                    query = base_query.filter(getattr(ShortUrl, key) == value)
                     if page != -1:
                         query = query.offset((page - 1) * limit).limit(limit)
                     result = await async_session.execute(query)
                     results.extend(result.scalars().all())
-            else:
-                query = select(ShortUrl).filter(getattr(ShortUrl, key) == value)
-                if page != -1:
-                    query = query.offset((page - 1) * limit).limit(limit)
-                result = await async_session.execute(query)
-                results.extend(result.scalars().all())
+        else:
+            # 如果沒有提供過濾條件，執行基本查詢
+            query = base_query
+            if page != -1:
+                query = query.offset((page - 1) * limit).limit(limit)
+            result = await async_session.execute(query)
+            results.extend(result.scalars().all())
+
         return results
 
     # 新增單一短網址
@@ -90,10 +110,9 @@ class ShortUrlService:
             for short_url in short_urls
         ]
         # 分批次插入資料
-        for i in range(0, len(short_urls), batch_size):
-            batch = short_urls[i : i + batch_size]
-            async_session.add_all(batch)
-            await async_session.commit()
+
+        async_session.add_all(short_urls)
+        await async_session.commit()
         return short_urls
 
     # 批量刪除短網址

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from db.database import get_db_session as get_db
 from schemas.short_url import ShortUrl as ShortUrlSchema
@@ -23,6 +24,9 @@ async def redirect_url(short_code: str, db: Session = Depends(get_db)):
 
     # 短網址存在，click_count 加 1
     await ShortUrlService.update_short_url(
-        db, short_url.id, click_count=short_url.click_count + 1
+        db,
+        short_url.short_code,
+        click_count=short_url.click_count + 1,
+        last_click_at=func.now(),
     )
     return short_url.origin_url

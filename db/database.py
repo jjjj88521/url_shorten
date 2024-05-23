@@ -1,7 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-from config.config import DATABASE_URL
+from config.config import settings
 from typing import AsyncGenerator
+
+
+DATABASE_URL = f"postgresql+asyncpg://{settings.DATABASE_USER}:{settings.DATABASE_PASSWORD}@{settings.DATABASE_HOST}:{settings.DATABASE_PORT}/{settings.DATABASE_NAME}"
 
 async_engine = create_async_engine(DATABASE_URL, echo=True, future=True)  # 創建引擎
 Base = declarative_base()  # 創建基底
