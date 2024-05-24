@@ -1,5 +1,6 @@
 import logging
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from db.database import async_engine, Base
@@ -35,7 +36,7 @@ app.add_middleware(
 # 包含路由
 app.include_router(redirect_url_router, tags=["短網址轉址"])  # 短網址轉址路由
 app.include_router(
-    short_url_router, prefix="/api/v1/admin", tags=["短網址管理"]
+    short_url_router, prefix="/api", tags=["短網址管理"]
 )  # 短網址管理路由
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -64,4 +65,12 @@ async def exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"message": "Internal server error", "data": None},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    logger.error(f"Validation error: {exc}")
+    return JSONResponse(
+        status_code=422, content={"message": "Validation error", "detail": exc.errors()}
     )

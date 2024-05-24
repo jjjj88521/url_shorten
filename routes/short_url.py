@@ -2,6 +2,7 @@ import csv
 import io
 from io import StringIO
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Query
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from config.logger import logger
@@ -33,24 +34,29 @@ def generate_short_code() -> str:
     return short_code
 
 
-@app.post("/shorten", response_model=MyResponse[ShortUrlSchema], summary="縮短網址")
+@app.post("/url/shorten", response_model=MyResponse[ShortUrlSchema], summary="縮短網址")
 async def create_short_url(
     short_url_create: ShortUrlCreate, db: Session = Depends(get_db_session)
 ):
-    short_url = await ShortUrlService.get_short_url(
-        db, origin_url=str(short_url_create.origin_url)
-    )
-    if short_url:
-        return MyResponse(data=short_url)
-    short_code = generate_short_code()
-    result = await ShortUrlService.create_short_url(
-        db, short_code=short_code, origin_url=short_url_create.origin_url
-    )
-    return MyResponse(data=result)
+    try:
+        short_url = await ShortUrlService.get_short_url(
+            db, origin_url=str(short_url_create.origin_url)
+        )
+        if short_url:
+            return MyResponse(data=short_url)
+        short_code = generate_short_code()
+        result = await ShortUrlService.create_short_url(
+            db, short_code=short_code, origin_url=short_url_create.origin_url
+        )
+        return MyResponse(data=result)
+
+    except RequestValidationError as e:
+        logger.error(e)
+        raise HTTPException(status_code=400, detail="Short URL already exists")
 
 
 @app.get(
-    "/short_url/list",
+    "/url/list",
     response_model=MyResponse[ListResponse[ShortUrlSchema]],
     summary="獲取短網址列表",
 )
@@ -60,12 +66,14 @@ async def get_short_urls(
 
     result = await ShortUrlService.get_short_url_list(db, page, limit)
     return MyResponse(
-        data=ListResponse(list=result, total=len(result), page=page, limit=limit)
+        data=ListResponse(
+            list=result["list"], total=result["total"], page=page, limit=limit
+        )
     )
 
 
 @app.get(
-    "/short_url/{short_code}",
+    "/url/{short_code}",
     response_model=MyResponse[ShortUrlSchema],
     summary="獲取單一短網址",
 )
@@ -77,7 +85,7 @@ async def get_short_url(short_code: str, db: Session = Depends(get_db_session)):
 
 
 @app.put(
-    "/short_url/{short_code}",
+    "/url/{short_code}",
     response_model=MyResponse[ShortUrlSchema],
     summary="更新短網址",
     description="只能更新 origin_url",
@@ -94,7 +102,7 @@ async def update_short_url(
     return MyResponse(data=updated_url)
 
 
-@app.delete("/short_url/{short_code}", response_model=MyResponse, summary="刪除短網址")
+@app.delete("/url/{short_code}", response_model=MyResponse, summary="刪除短網址")
 async def delete_short_url(short_code: str, db: Session = Depends(get_db_session)):
     deleted_url = await ShortUrlService.delete_short_url(db, short_code)
     if not deleted_url:
@@ -102,7 +110,9 @@ async def delete_short_url(short_code: str, db: Session = Depends(get_db_session
     return MyResponse
 
 
-@app.post("/shorten/batch", response_class=StreamingResponse, summary="批量縮短網址")
+@app.post(
+    "/url/shorten/batch", response_class=StreamingResponse, summary="批量縮短網址"
+)
 async def shorten_batch(
     file: UploadFile = File(...), db: AsyncSession = Depends(get_db_session)
 ):
@@ -121,11 +131,11 @@ async def shorten_batch(
     existing_short_urls = await ShortUrlService.get_short_url_list(
         db, page=-1, origin_url=origin_urls
     )
-    existing_origin_urls = {url.origin_url: url for url in existing_short_urls}
+    existing_origin_urls = {url.origin_url: url for url in existing_short_urls["list"]}
 
     new_mappings = []
     new_short_urls = []
-    existing_short_codes = set(url.short_code for url in existing_short_urls)
+    existing_short_codes = set(url.short_code for url in existing_short_urls["list"])
 
     for origin_url in origin_urls:
         if origin_url in existing_origin_urls:

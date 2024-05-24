@@ -1,5 +1,5 @@
 import asyncio
-from sqlalchemy import select, update, delete
+from sqlalchemy import func, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.short_url import ShortUrl
 from typing import List, Optional
@@ -22,10 +22,11 @@ class ShortUrlService:
     @staticmethod
     async def get_short_url_list(
         async_session: AsyncSession, page: int = 1, limit: int = 20, **kwargs
-    ):
+    ) -> dict:
         results = []
+        total = 0
         batch_size = 10000
-        base_query = select(ShortUrl)
+        base_query = select(ShortUrl).order_by(ShortUrl.created_at.desc())
 
         if kwargs:
             # 如果有提供過濾條件，執行過濾條件查詢
@@ -33,34 +34,46 @@ class ShortUrlService:
                 # 如果是列表，則執行分批次查詢
                 if isinstance(value, list):
                     tasks = []
+                    count_tasks = []
                     # 分批次處理每個列表參數
                     for i in range(0, len(value), batch_size):
                         batch = value[i : i + batch_size]
                         query = base_query.filter(getattr(ShortUrl, key).in_(batch))
+                        count_query = select(func.count()).select_from(query)
                         if page != -1:
                             query = query.offset((page - 1) * limit).limit(limit)
                         tasks.append(async_session.execute(query))
+                        count_tasks.append(async_session.execute(count_query))
 
                     # 異步執行所有批次查詢
                     batch_results = await asyncio.gather(*tasks)
+                    count_results = await asyncio.gather(*count_tasks)
                     for batch_result in batch_results:
                         results.extend(batch_result.scalars().all())
+                    for count_result in count_results:
+                        total += count_result.scalar()
                 # 否則直接使用過濾條件查詢
                 else:
                     query = base_query.filter(getattr(ShortUrl, key) == value)
+                    count_query = select(func.count()).select_from(query)
                     if page != -1:
                         query = query.offset((page - 1) * limit).limit(limit)
                     result = await async_session.execute(query)
+                    total_result = await async_session.execute(count_query)
                     results.extend(result.scalars().all())
+                    total += total_result.scalar()
         else:
             # 如果沒有提供過濾條件，執行基本查詢
             query = base_query
+            count_query = select(func.count()).select_from(base_query)
             if page != -1:
                 query = query.offset((page - 1) * limit).limit(limit)
             result = await async_session.execute(query)
+            total_result = await async_session.execute(count_query)
             results.extend(result.scalars().all())
+            total += total_result.scalar()
 
-        return results
+        return {"list": results, "total": total}
 
     # 新增單一短網址
     @staticmethod
