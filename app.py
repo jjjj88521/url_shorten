@@ -1,12 +1,14 @@
 import logging
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from db.database import async_engine, Base
+from dependencies.api_key import get_api_key
 from routes.short_url import app as short_url_router
 from contextlib import asynccontextmanager
 from routes.redirect_url import app as redirect_url_router
+from routes.access_log import app as access_log_router
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
@@ -36,8 +38,17 @@ app.add_middleware(
 # 包含路由
 app.include_router(redirect_url_router, tags=["短網址轉址"])  # 短網址轉址路由
 app.include_router(
-    short_url_router, prefix="/api", tags=["短網址管理"]
+    short_url_router,
+    prefix="/api",
+    tags=["短網址管理"],
+    dependencies=[Depends(get_api_key)],
 )  # 短網址管理路由
+app.include_router(
+    access_log_router,
+    prefix="/api",
+    tags=["訪問紀錄"],
+    dependencies=[Depends(get_api_key)],
+)  # 訪問紀錄路由
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse

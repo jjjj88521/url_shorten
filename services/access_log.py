@@ -1,32 +1,30 @@
 import asyncio
 from sqlalchemy import func, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from models.short_url import ShortUrl
+from models.access_log import AccessLog
 from typing import List, Optional
-from sqlalchemy.orm import load_only
-from pydantic import HttpUrl
 
 
-class ShortUrlService:
+class AccessLogService:
 
-    # 取得單一短網址
+    # 取得單一訪問紀錄
     @staticmethod
-    async def get_short_url(
+    async def get_access_log(
         async_session: AsyncSession, **kwargs
-    ) -> Optional[ShortUrl]:
-        query = select(ShortUrl).filter_by(**kwargs)
+    ) -> Optional[AccessLog]:
+        query = select(AccessLog).filter_by(**kwargs)
         result = await async_session.execute(query)
         return result.scalar()
 
-    # 取得短網址列表，如果帶入 page=-1 則獲取全部
+    # 取得訪問紀錄列表，如果帶入 page=-1 則獲取全部
     @staticmethod
-    async def get_short_url_list(
+    async def get_access_log_list(
         async_session: AsyncSession, page: int = 1, limit: int = 20, **kwargs
     ) -> dict:
         results = []
         total = 0
         batch_size = 10000
-        base_query = select(ShortUrl).order_by(ShortUrl.created_at.desc())
+        base_query = select(AccessLog).order_by(AccessLog.accessed_at.desc())
 
         if kwargs:
             # 如果有提供過濾條件，執行過濾條件查詢
@@ -38,7 +36,7 @@ class ShortUrlService:
                     # 分批次處理每個列表參數
                     for i in range(0, len(value), batch_size):
                         batch = value[i : i + batch_size]
-                        query = base_query.filter(getattr(ShortUrl, key).in_(batch))
+                        query = base_query.filter(getattr(AccessLog, key).in_(batch))
                         count_query = select(func.count()).select_from(query)
                         if page != -1:
                             query = query.offset((page - 1) * limit).limit(limit)
@@ -54,7 +52,7 @@ class ShortUrlService:
                         total += count_result.scalar()
                 # 否則直接使用過濾條件查詢
                 else:
-                    query = base_query.filter(getattr(ShortUrl, key) == value)
+                    query = base_query.filter(getattr(AccessLog, key) == value)
                     count_query = select(func.count()).select_from(query)
                     if page != -1:
                         query = query.offset((page - 1) * limit).limit(limit)
@@ -73,81 +71,36 @@ class ShortUrlService:
             results.extend(result.scalars().all())
             total += total_result.scalar()
 
-        print(results)
-
         return {"list": results, "total": total}
 
-    # 新增單一短網址
+    # 新增單一訪問紀錄
     @staticmethod
-    async def create_short_url(async_session: AsyncSession, **kwargs):
-        short_url = ShortUrl(**kwargs)
-        async_session.add(short_url)
+    async def create_access_log(async_session: AsyncSession, **kwargs):
+        access_log = AccessLog(**kwargs)
+        async_session.add(access_log)
         await async_session.commit()
-        await async_session.refresh(short_url)  # 刷新對象以獲取自動生成的字段
-        return short_url
+        await async_session.refresh(access_log)  # 刷新對象以獲取自動生成的字段
+        return access_log
 
-    # 更新短網址
+    # 刪除訪問紀錄
     @staticmethod
-    async def update_short_url(async_session: AsyncSession, short_code: str, **kwargs):
-        query = (
-            update(ShortUrl).where(ShortUrl.short_code == short_code).values(**kwargs)
-        )
-        await async_session.execute(query)
-        await async_session.commit()
-
-        # 確認更新後返回更新的對象
-        return await ShortUrlService.get_short_url(async_session, short_code=short_code)
-
-    # 刪除短網址
-    @staticmethod
-    async def delete_short_url(async_session: AsyncSession, short_code: str):
-        query = delete(ShortUrl).where(ShortUrl.short_code == short_code)
+    async def delete_access_log(async_session: AsyncSession, short_code: str):
+        query = delete(AccessLog).where(AccessLog.short_code == short_code)
         result = await async_session.execute(query)
         await async_session.commit()
         if result.rowcount == 0:
             return None
         return result
 
-    # 批量新增短網址
+    # 取得不重複的短網址點擊數
     @staticmethod
-    async def create_batch_short_url(
-        async_session: AsyncSession, short_urls: List[ShortUrl], batch_size: int = 1000
-    ):
-        # 使用 SQLAlchemy 模型的 __dict__ 屬性，並過濾掉 SQLAlchemy 特定的屬性
-        short_urls = [
-            ShortUrl(
-                **{
-                    key: value
-                    for key, value in short_url.__dict__.items()
-                    if not key.startswith("_")
-                }
-            )
-            for short_url in short_urls
-        ]
-        # 分批次插入資料
-
-        async_session.add_all(short_urls)
-        await async_session.commit()
-        return short_urls
-
-    # 批量刪除短網址
-    @staticmethod
-    async def delete_batch_short_url(async_session: AsyncSession, ids: List[int]):
-        query = delete(ShortUrl).where(ShortUrl.id.in_(ids))
-        result = await async_session.execute(query)
-        await async_session.commit()
-        return result
-
-    # 取得短網址總數
-    @staticmethod
-    async def get_short_url_count(async_session: AsyncSession):
-        query = select(func.count()).select_from(ShortUrl)
-        result = await async_session.execute(query)
-        return result.scalar()
-
-    # 取得短網址總點擊數
-    @staticmethod
-    async def get_short_url_click_count(async_session: AsyncSession):
-        query = select(func.sum(ShortUrl.click_count)).select_from(ShortUrl)
+    async def get_distinct_click_count(async_session: AsyncSession, **kwargs) -> int:
+        subquery = (
+            select(AccessLog.short_code, AccessLog.ip_address)
+            .filter_by(**kwargs)
+            .distinct()
+            .subquery()
+        )
+        query = select(func.count()).select_from(subquery)
         result = await async_session.execute(query)
         return result.scalar()

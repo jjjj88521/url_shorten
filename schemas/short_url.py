@@ -20,6 +20,7 @@ class ShortUrlCreate(ShortUrlBase):
 # 更新短網址的模型
 class ShortUrlUpdate(BaseModel):
     origin_url: Optional[HttpUrl] = None
+    expired_at: Optional[datetime] = None
 
     @field_validator("origin_url")
     def convert_httpurl_to_str(cls, v):
@@ -30,9 +31,10 @@ class ShortUrlUpdate(BaseModel):
 class ShortUrl(ShortUrlBase):
     short_code: str
     click_count: int
+    last_click_at: Optional[datetime]
+    expired_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
-    last_click_at: Optional[datetime]
 
     class Config:
         from_attributes = True

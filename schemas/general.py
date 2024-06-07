@@ -17,9 +17,17 @@ class ListResponse(BaseModel, Generic[T]):
         arbitrary_types_allowed = True
 
 
+# 泛型的回應模型
 class MyResponse(BaseModel, Generic[T]):
     message: str = "success"
     data: Optional[T] = None
 
     class Config:
         arbitrary_types_allowed = True
+
+
+# dashboard shema
+class DashboardSchema(BaseModel):
+    total_short_urls: int
+    total_clicks: int
+    total_unique_clicks: int

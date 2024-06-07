@@ -14,7 +14,8 @@ from schemas.short_url import (
     ShortUrl as ShortUrlSchema,
     ShortUrlUpdate,
 )
-from schemas.general import ListResponse, MyResponse
+from schemas.general import DashboardSchema, ListResponse, MyResponse
+from services.access_log import AccessLogService
 from services.short_url import ShortUrlService
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,6 +33,20 @@ def generate_short_code() -> str:
     # 生成6碼Base62短網址
     short_code = generate_short_url(unique_id)
     return short_code
+
+
+@app.get("/dashboard", response_model=MyResponse[DashboardSchema], summary="獲取統計數")
+async def get_dashboard(db: Session = Depends(get_db_session)):
+    total_short_urls = await ShortUrlService.get_short_url_count(db)
+    total_clicks = await ShortUrlService.get_short_url_click_count(db)
+    total_unique_clicks = await AccessLogService.get_distinct_click_count(db)
+    return MyResponse(
+        data={
+            "total_short_urls": total_short_urls,
+            "total_clicks": total_clicks,
+            "total_unique_clicks": total_unique_clicks,
+        }
+    )
 
 
 @app.post("/url/shorten", response_model=MyResponse[ShortUrlSchema], summary="縮短網址")
